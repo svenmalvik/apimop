@@ -18,8 +18,14 @@ package controllers
 
 import (
 	"context"
+	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,6 +38,12 @@ type GuestbookReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+var (
+	subscriptionID    string
+	location          = "westeurope"
+	resourceGroupName = "smatestbla2-rg"
+)
 
 //+kubebuilder:rbac:groups=webapp.no.vipps,resources=guestbooks,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=webapp.no.vipps,resources=guestbooks/status,verbs=get;update;patch
@@ -47,11 +59,51 @@ type GuestbookReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *GuestbookReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	l := log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	//log.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	l.Info("Bla-------------------")
+
+	subscriptionID = os.Getenv("AZURE_SUBSCRIPTION_ID")
+	if len(subscriptionID) == 0 {
+		l.Info("AZURE_SUBSCRIPTION_ID is not set")
+	}
+
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		l.Error(err, "azidentity err")
+	}
+	ctxx := context.Background()
+	var guestbook webappv1.Guestbook
+	r.Get(ctxx, types.NamespacedName{Name: req.Name, Namespace: req.Namespace}, &guestbook)
+
+	createResourceGroup(ctxx, cred, guestbook.Spec.Name)
+	if err != nil {
+		l.Error(err, "createResourceGroup")
+	}
 
 	return ctrl.Result{}, nil
+}
+
+func createResourceGroup(ctxx context.Context, cred azcore.TokenCredential, rg string) (*armresources.ResourceGroup, error) {
+	l := log.FromContext(ctxx)
+	resourceGroupClient := armresources.NewResourceGroupsClient(subscriptionID, cred, nil)
+
+	l.Info(rg)
+	resourceGroupResp, err := resourceGroupClient.CreateOrUpdate(
+		ctxx,
+		rg,
+		armresources.ResourceGroup{
+			Location: to.StringPtr(location),
+		},
+		nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &resourceGroupResp.ResourceGroup, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
