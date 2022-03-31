@@ -19,10 +19,12 @@ package controllers
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
+	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement"
 	"github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/resources/armresources"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -83,7 +85,76 @@ func (r *GuestbookReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		l.Error(err, "createResourceGroup")
 	}
 
+	createAPI(ctxx)
+	//createPureAPI(ctxx)
+	//getAPI(ctxx)
+
 	return ctrl.Result{}, nil
+}
+
+func createPureAPI(ctx context.Context) {
+	l := log.FromContext(ctx)
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		l.Error(err, "failed to obtain a credential: %v")
+	}
+
+	subscriptionID = os.Getenv("AZURE_SUBSCRIPTION_ID")
+	client := armapimanagement.NewAPIClient(subscriptionID, cred, nil)
+	poller, err := client.BeginCreateOrUpdate(ctx,
+		"smaapim-rg",
+		"smaapim2",
+		"demo-conference-api-3",
+		armapimanagement.APICreateOrUpdateParameter{
+			Properties: &armapimanagement.APICreateOrUpdateProperties{
+				Description: to.StringPtr("Dies ist ein Test"),
+				//AuthenticationSettings: &armapimanagement.AuthenticationSettingsContract{
+				//	OAuth2: &armapimanagement.OAuth2AuthenticationSettingsContract{
+				//		AuthorizationServerID: to.StringPtr("<authorization-server-id>"),
+				//		Scope:                 to.StringPtr("<scope>"),
+				//	},
+				//},
+				SubscriptionKeyParameterNames: &armapimanagement.SubscriptionKeyParameterNamesContract{
+					Header: to.StringPtr("X-ApiKey"),
+					Query:  to.StringPtr("ApiKey"),
+				},
+				Path:        to.StringPtr("conf"),
+				DisplayName: to.StringPtr("democonf3"),
+				Protocols: []*armapimanagement.Protocol{
+					armapimanagement.Protocol("https").ToPtr(),
+					armapimanagement.Protocol("http").ToPtr()},
+				ServiceURL: to.StringPtr("https://svenmalvik.com"),
+			},
+		},
+		&armapimanagement.APIClientBeginCreateOrUpdateOptions{IfMatch: nil})
+	if err != nil {
+		l.Error(err, "Error 1")
+	}
+	res, err := poller.PollUntilDone(ctx, 30*time.Second)
+	if err != nil {
+		l.Error(err, "Error 2")
+	}
+	l.Info("Response result: %#v\n", res.APIClientCreateOrUpdateResult)
+}
+
+func getAPI(ctx context.Context) {
+	l := log.FromContext(ctx)
+	cred, err := azidentity.NewDefaultAzureCredential(nil)
+	if err != nil {
+		l.Error(err, "failed to obtain a credential")
+	}
+	//ctxx := context.Background()
+	subscriptionID = os.Getenv("AZURE_SUBSCRIPTION_ID")
+	client := armapimanagement.NewAPIClient(subscriptionID, cred, nil)
+	res, err := client.Get(ctx,
+		"smaapim-rg",
+		"smaapim2",
+		"demo-conference-api",
+		nil)
+	if err != nil {
+		l.Error(err, "----")
+	}
+	l.Info("Response result: %#v\n", res.APIClientGetResult)
 }
 
 func createResourceGroup(ctxx context.Context, cred azcore.TokenCredential, rg string) (*armresources.ResourceGroup, error) {

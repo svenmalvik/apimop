@@ -3,6 +3,7 @@ module no.vipps/guestbook
 go 1.17
 
 require (
+	github.com/Azure/azure-sdk-for-go/sdk/resourcemanager/apimanagement/armapimanagement v0.3.1
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	k8s.io/apimachinery v0.23.5
